@@ -1,6 +1,3 @@
-#!/usr/bin/env python
-# coding: utf-8
-
 import pickle
 import matplotlib
 matplotlib.use('Agg')
@@ -42,12 +39,6 @@ import argparse
 from torch.autograd import Variable
 from argparse import ArgumentParser
 import matplotlib.pyplot as plt
-import warnings
-warnings.filterwarnings('ignore')
-warnings.simplefilter('ignore')
-save_path = "saved_models/model.tar"
-if not os.path.exists("saved_models"):
-    os.makedirs("saved_models")
 importlib.reload(model_utils)
 import model_utils
 import mimic_model_copy4 as model
@@ -82,7 +73,7 @@ class ML_models():
     def __init__(self,model_type,data_name):
         self.model_type=model_type
         self.data_name=data_name
-        dir = f"/home/yzq/MIMIC-IV-Data-Pipeline/data/ml_data/data{self.data_name}/{args.strategy}"
+        dir = f"./data/ml_data/data{self.data_name}/{args.strategy}"
         os.makedirs(dir, exist_ok=True)
         if not os.path.exists(f"{dir}/train_data.npy"):
             if os.path.exists(f'./data/sparse/data{self.data_name}/{args.strategy}/dataset_{args.stride}.pt'):
@@ -125,60 +116,49 @@ class ML_models():
         if data_unprocessed:
             train_data, y_train = self.get_data_from_loader(self.train_val_loader)
             test_data, y_test = self.get_data_from_loader(self.test_loader)
-            np.save(f"/home/yzq/MIMIC-IV-Data-Pipeline/data/ml_data/data{self.data_name}/{args.strategy}/train_data.npy", train_data)
-            np.save(f"/home/yzq/MIMIC-IV-Data-Pipeline/data/ml_data/data{self.data_name}/{args.strategy}/y_train.npy", y_train)
-            np.save(f"/home/yzq/MIMIC-IV-Data-Pipeline/data/ml_data/data{self.data_name}/{args.strategy}/test_data.npy", test_data)
-            np.save(f"/home/yzq/MIMIC-IV-Data-Pipeline/data/ml_data/data{self.data_name}/{args.strategy}/y_test.npy", y_test)
-            """
-            over = SMOTE(sampling_strategy=0.2)  
-            under = RandomUnderSampler(sampling_strategy=1)  
-            steps = [('o', over), ('u', under)]
-            pipeline = Pipeline(steps=steps)
-            train_data, y_train = pipeline.fit_resample(train_data, y_train)
-            """
+            np.save(f"./data/ml_data/data{self.data_name}/{args.strategy}/train_data.npy", train_data)
+            np.save(f"./data/ml_data/data{self.data_name}/{args.strategy}/y_train.npy", y_train)
+            np.save(f"./data/ml_data/data{self.data_name}/{args.strategy}/test_data.npy", test_data)
+            np.save(f"./data/ml_data/data{self.data_name}/{args.strategy}/y_test.npy", y_test)
+    
         else:
-            train_data=np.load(f"/home/yzq/MIMIC-IV-Data-Pipeline/data/ml_data/data{self.data_name}/{args.strategy}/train_data.npy")
-            y_train=np.load(f"/home/yzq/MIMIC-IV-Data-Pipeline/data/ml_data/data{self.data_name}/{args.strategy}/y_train.npy")
-            test_data=np.load(f"/home/yzq/MIMIC-IV-Data-Pipeline/data/ml_data/data{self.data_name}/{args.strategy}/test_data.npy")
-            y_test=np.load(f"/home/yzq/MIMIC-IV-Data-Pipeline/data/ml_data/data{self.data_name}/{args.strategy}/y_test.npy")
+            train_data=np.load(f"./data/ml_data/data{self.data_name}/{args.strategy}/train_data.npy")
+            y_train=np.load(f"./data/ml_data/data{self.data_name}/{args.strategy}/y_train.npy")
+            test_data=np.load(f"./data/ml_data/data{self.data_name}/{args.strategy}/test_data.npy")
+            y_test=np.load(f"./data/ml_data/data{self.data_name}/{args.strategy}/y_test.npy")
             
-        #loss = evaluation.Loss('cpu', True, True, True, True, True, True, True, True, True, True, True)
-
         if model_type == 'Random Forest':
             print("===================Random Forest=====================")
             train_data, y_train = self.sample_data(train_data, y_train, sample_ratio=1)
             test_data, y_test = self.sample_data(test_data, y_test, sample_ratio=1)
-            model = RandomForestClassifier(n_estimators=30, max_depth=3, random_state=42).fit(train_data, y_train)#5,2 6,3 ,min_samples_split=2,min_samples_leaf=3
+            model = RandomForestClassifier(n_estimators=60, max_depth=5, random_state=42).fit(train_data, y_train)
             logits = model.predict_log_proba(test_data)
             prob = model.predict_proba(test_data)
-            #loss(prob[:, 1], y_test, logits[:, 1], False, True)
 
         elif model_type == 'Logistic Regression':
             print("===================Logistic Regression=====================")
-            train_data, y_train = self.sample_data(train_data, y_train, sample_ratio=0.1)
-            test_data, y_test = self.sample_data(test_data, y_test, sample_ratio=0.1)
-            model = LogisticRegression(C=0.01, penalty='none',max_iter=50,class_weight='balanced').fit(train_data, y_train) #0.001
+            train_data, y_train = self.sample_data(train_data, y_train, sample_ratio=1)
+            test_data, y_test = self.sample_data(test_data, y_test, sample_ratio=1)
+            model = LogisticRegression(C=0.01, penalty='none',max_iter=100,class_weight='balanced').fit(train_data, y_train) #0.001
             logits = model.predict_log_proba(test_data)
             prob = model.predict_proba(test_data)
-            #loss(prob[:, 1], y_test, logits[:, 1], False, True)
 
         elif model_type == 'Xgboost':
             print("===================Xgboost=====================")
-            train_data, y_train = self.sample_data(train_data, y_train, sample_ratio=0.5)
-            test_data, y_test = self.sample_data(test_data, y_test, sample_ratio=0.5)
-            model = xgb.XGBClassifier(learning_rate=0.05,n_estimators=3,max_depth=20, min_child_weight=5, gamma=0.5, colsample_bytree=0.01, objective="binary:logistic").fit(train_data, y_train)
+            train_data, y_train = self.sample_data(train_data, y_train, sample_ratio=1)
+            test_data, y_test = self.sample_data(test_data, y_test, sample_ratio=1)
+            model = xgb.XGBClassifier(learning_rate=0.01,n_estimators=6,max_depth=50, min_child_weight=8, gamma=0.5, colsample_bytree=0.01, objective="binary:logistic").fit(train_data, y_train)
             prob = model.predict_proba(test_data)
             logits = np.log2(prob[:, 1] / prob[:, 0])
-            #loss(prob[:, 1], y_test, logits, False, True)
 
         elif model_type == 'Gradient Boosting':
             print("===================Gradient Boosting=====================")
-            train_data, y_train = self.sample_data(train_data, y_train, sample_ratio=0.5)
-            test_data, y_test = self.sample_data(test_data, y_test, sample_ratio=0.5)
-            model = HistGradientBoostingClassifier(max_iter=2,max_leaf_nodes=3,max_depth=10, min_samples_leaf=80, max_bins=3).fit(train_data, y_train)
+            train_data, y_train = self.sample_data(train_data, y_train, sample_ratio=1)
+            test_data, y_test = self.sample_data(test_data, y_test, sample_ratio=1)
+            model = HistGradientBoostingClassifier(max_iter=5,max_leaf_nodes=8,max_depth=10, min_samples_leaf=80, max_bins=3).fit(train_data, y_train)
             prob = model.predict_proba(test_data)
             logits = np.log2(prob[:, 1] / prob[:, 0])
-            #loss(prob[:, 1], y_test, logits, False, True)
+
         all_predictions = np.argmax(prob, axis=1)
         all_probabilities = prob[:, 1]
 
@@ -194,10 +174,10 @@ class ML_models():
         logging.info(log_message)
 
         # Save true labels and predicted probabilities
-        save_dir=f"/home/yzq/MIMIC-IV-Data-Pipeline/images/data{self.data_name}/ml_model"
+        save_dir=f"./images/data{self.data_name}/ml_model"
         os.makedirs(save_dir, exist_ok=True)
-        np.save(f"{save_dir}/{model_type}_{args.strategy}_0412_true_labels.npy", y_test)
-        np.save(f"{save_dir}/{model_type}_{args.strategy}_0412_predicted_probabilities.npy", all_probabilities)
+        np.save(f"{save_dir}/{model_type}_{args.strategy}_true_labels.npy", y_test)
+        np.save(f"{save_dir}/{model_type}_{args.strategy}_predicted_probabilities.npy", all_probabilities)
 
 def calculate_positive_negative_ratio(loader):
         positive_count = 0
@@ -277,7 +257,7 @@ class TorchFileDataset(Dataset):
     def __getitem__(self, idx):
         return self.dataset[idx]
 
-class TSEncoderAutoencoder(nn.Module):
+class IAHEDAutoencoder(nn.Module):
     def __init__(self, input_dims, output_dims, hidden_dims=64, depth=10):
         super().__init__()
         self.encoder = TSEncoder(input_dims, output_dims, hidden_dims, depth)
@@ -319,7 +299,6 @@ class AutoencoderTrainer:
         for epoch in range(num_epochs_ae):
             for data in train_loader:
                 seqs = tuple(d.to(self.device) for d in data[:3])
-                #labels = data[-1].to(self.device)
                 dynamic_x = torch.cat (seqs,dim=2)
                 _, decoded = self.model(dynamic_x)
                 self.optimizer.zero_grad()
@@ -330,7 +309,6 @@ class AutoencoderTrainer:
             with torch.no_grad():
                 for data in val_loader:
                     seqs = tuple(d.to(self.device) for d in data[:3])
-                    #labels = data[-1].to(self.device)
                     dynamic_x = torch.cat (seqs,dim=2)
                     _, decoded = self.model(dynamic_x) 
                     loss = self.ae_criterion(decoded, dynamic_x)
@@ -341,9 +319,9 @@ class AutoencoderTrainer:
                 best_loss = avg_val_loss
                 best_weights = self.model.state_dict()
         if label_num==0:
-            torch.save(best_weights, "./data/sparse/data{}/{}/majority_best_weights1_{}_{}_{}_{}.pth".format(args.data_name, args.strategy, args.batch_size, args.common_dim, args.num_epochs_ae, args.output_dim))
+            torch.save(best_weights, "./data/sparse/data{}/{}/majority_best_weights_{}_{}_{}_{}.pth".format(args.data_name, args.strategy, args.batch_size, args.common_dim, args.num_epochs_ae, args.output_dim))
         else:   
-            torch.save(best_weights, "./data/sparse/data{}/{}/minority_best_weights1_{}_{}_{}_{}.pth".format(args.data_name, args.strategy, args.batch_size, args.common_dim, args.num_epochs_ae, args.output_dim))
+            torch.save(best_weights, "./data/sparse/data{}/{}/minority_best_weights_{}_{}_{}_{}.pth".format(args.data_name, args.strategy, args.batch_size, args.common_dim, args.num_epochs_ae, args.output_dim))
 
 class DL_models():
     def __init__(self,data_icu,diag_flag,proc_flag,out_flag,chart_flag,med_flag,lab_flag,anti_flag,vent_flag,model_type,k_fold,data_name,sampling_first,undersampling,model_name,train,save_data=False,pre_train=False,train_test=False,test=False):
@@ -420,26 +398,18 @@ class DL_models():
                 print("No Y Data")
         else:
             print("=================================")
-        #if not os.path.exists(f"./data/sparse/data{self.data_name}/{args.strategy}/train_loader_{args.batch_size}.pt"):
         if os.path.exists(f"./data/sparse/data{self.data_name}/{args.strategy}/dataset_{args.stride}.pt"):
             dataset = TorchFileDataset(f'./data/sparse/data{self.data_name}/{args.strategy}/dataset_{args.stride}.pt',f'./data/sparse/data{self.data_name}/{args.strategy}/labels_{args.stride}.npy')
         else: 
             dataset = self.build(binning=False, data_save=True)
             
         train_loader, val_loader, test_loader, train_val_loader, train_val_subset, train_val_idx = self.dataset_loader(dataset)
-            #train_loader, val_loader, test_loader = save_load_data(train_loader, val_loader, test_loader, save=True)
-        
-        #else:
-        #    train_loader = None
-        #    val_loader = None
-        #    test_loader = None
-        #    train_loader, val_loader, test_loader = save_load_data(train_loader, val_loader, test_loader, save=False)
-
+         
         if pre_train:
             pre_model = TSEncoderAutoencoder(self.dynamic_dim, args.output_dim).to(self.device)
             trainer = AutoencoderTrainer(pre_model, dataset, device = self.device)
-            trainer.train(1, train_val_subset, train_val_idx) #4000,
-            trainer.train(0, train_val_subset, train_val_idx) #10000,
+            trainer.train(1, train_val_subset, train_val_idx) 
+            trainer.train(0, train_val_subset, train_val_idx) 
 
         if train_test:
             self.train(train_loader, val_loader)
@@ -450,7 +420,7 @@ class DL_models():
        
     def dataset_loader(self, dataset):
         sss = StratifiedShuffleSplit(n_splits=1, test_size=0.2, random_state=42)
-        train_val_idx, test_idx = next(sss.split(np.zeros(len(dataset)), dataset.labels.squeeze()))#105408, 26352
+        train_val_idx, test_idx = next(sss.split(np.zeros(len(dataset)), dataset.labels.squeeze()))
         filename = "./data/sparse/data{}/{}/train_val_idx_{}_{}_{}_{}{}.pkl".format(self.data_name, args.strategy, args.batch_size, args.common_dim, args.num_epochs_ae, args.output_dim,args.updated)
         if not os.path.exists(filename):
             with open(filename, 'wb') as file:
@@ -458,8 +428,8 @@ class DL_models():
         train_val_subset = Subset(dataset, train_val_idx)
         test_subset = Subset(dataset, test_idx)
         sss_inner = StratifiedShuffleSplit(n_splits=1, test_size=0.2, random_state=42)
-        for train_index, val_index in sss_inner.split(np.zeros(len(train_val_subset)), np.array(dataset.labels.squeeze())[train_val_idx]): #84326 21082
-            train_index_resample, train_index_remain = train_test_split(train_index, test_size=0.1, random_state=42)#67460 16866, stratify=[dataset.labels.squeeze()[i] for i in train_index]
+        for train_index, val_index in sss_inner.split(np.zeros(len(train_val_subset)), np.array(dataset.labels.squeeze())[train_val_idx]): 
+            train_index_resample, train_index_remain = train_test_split(train_index, test_size=0.1, random_state=42)
             train_labels_resample = [dataset.labels.squeeze()[i] for i in train_index_resample]
             over = SMOTE(sampling_strategy=args.sample_over)
             under = RandomUnderSampler(sampling_strategy=args.sample_over)
@@ -467,22 +437,20 @@ class DL_models():
             pipeline = Pipeline(steps=steps)
             train_index_oversampled, train_labels_oversampled = pipeline.fit_resample(np.array(train_index_resample).reshape(-1, 1), train_labels_resample)
             train_index_oversampled = train_index_oversampled.squeeze()
-            # 获取保持原样的训练集
             train_index_remain = np.array(train_index_remain)
             train_labels_remain = np.array([dataset.labels.squeeze()[i] for i in train_index_remain])
-            # 将处理后的训练集和保持原样的训练集合并起来
             train_index = np.concatenate((train_index_oversampled, train_index_remain), axis=0)
             train_labels = np.concatenate((train_labels_oversampled, train_labels_remain), axis=0)
             train_subset = Subset(dataset, train_index)
             val_subset = Subset(dataset, val_index)
-            train_loader = DataLoader(train_subset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, drop_last=True)#, collate_fn=dataset.my_collate_fn
-            val_loader = DataLoader(val_subset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, drop_last=True)#, collate_fn=dataset.my_collate_fn
-            test_loader = DataLoader(test_subset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, drop_last=True)#, collate_fn=dataset.my_collate_fn
-            train_val_loader = DataLoader(train_val_subset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, drop_last=True)#, collate_fn=dataset.my_collate_fn)
+            train_loader = DataLoader(train_subset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, drop_last=True)
+            val_loader = DataLoader(val_subset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, drop_last=True)
+            test_loader = DataLoader(test_subset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, drop_last=True)
+            train_val_loader = DataLoader(train_val_subset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, drop_last=True)
             train_positive_negative_ratio = calculate_positive_negative_ratio(train_loader)
             test_positive_negative_ratio = calculate_positive_negative_ratio(test_loader)
             print(f"Train Positive Negative Ratio: {train_positive_negative_ratio}, Test Positive Negative Ratio: {test_positive_negative_ratio}") 
-        return train_loader, val_loader, test_loader, train_val_loader, train_val_subset, train_val_idx #168:(0.20356189967982924, 0.7964381003201707)/(0.14080739299610895, 0.859192607003891)(0.01180064308681672, 0.9881993569131833) 336:(0.22711267605633803, 0.772887323943662)(0.041, 0.959)(0.04286259541984733, 0.9571374045801526) truncate(0.2430715123094959, 0.7569284876905041), (0.029178321678321677, 0.9708216783216783)
+        return train_loader, val_loader, test_loader, train_val_loader, train_val_subset, train_val_idx 
 
     def train(self, train_loader, val_loader):
         self.create_model(self.model_type)
@@ -491,17 +459,17 @@ class DL_models():
         stagnant_epochs = 0
         
         best_metric = -0.1
-        improvement_threshold = 0.01  # Minimum improvement to consider
-        patience_increase = 5  # How much to increase patience by on improvement
-        max_patience = 15  # Maximum patience to allow for
-        dynamic_patience = 15 #20
+        improvement_threshold = 0.01  
+        patience_increase = 5  
+        max_patience = 15  
+        dynamic_patience = 15 
         for epoch in range(args.num_epochs):
             all_predictions = []
             all_labels = []
             all_probabilities = []
             total_loss = 0.0
             self.net.train()
-            for data in train_loader:#subset_loader:#
+            for data in train_loader:
                 seqs = data[:-1]
                 labels = data[-1].to(self.device).squeeze(-1)
                 loss, outputs = self.train_model(seqs,labels)
@@ -510,8 +478,7 @@ class DL_models():
                 all_predictions.extend(predictions.cpu().numpy())
                 all_labels.extend(labels.cpu().numpy())
                 all_probabilities.extend(outputs.detach().cpu().numpy())
-                #print(f"No: {i}/{int(len(train_index_oversampled)/args.batch_size)}, Total Loss: {loss.item():.4f}")
-
+                
             tra_accuracy = accuracy_score(all_labels, all_predictions)
             tra_precision = precision_score(all_labels, all_predictions)
             tra_recall = recall_score(all_labels, all_predictions)
@@ -521,14 +488,14 @@ class DL_models():
             print(f"Epoch [{epoch + 1}/{args.num_epochs}], Train Loss: {total_loss/len(train_loader):.4f}, Accuracy: {tra_accuracy:.4f}, Precision: {tra_precision:.4f}, Recall: {tra_recall:.4f}, F1 Score: {tra_f1:.4f}, AUC-ROC: {tra_roc:.4f}, AUC-PR: {tra_prc:.4f}")
             val_metrics = self.evaluate_model(self.net, val_loader, self.loss, is_plot=False)
             print(f"Validation {', '.join([f'{k}: {v:.4f}' for k, v in val_metrics.items()])}")
-            #print(f"Validation Loss: {val_loss:.4f}, Accuracy: {val_accuracy:.4f}, Recall: {val_recall:.4f}, F1 Score: {val_f1:.4f}")
             self.scheduler.step(val_metrics['Loss'])
-            save_dir = f'/home/yzq/MIMIC-IV-Data-Pipeline/data/sparse/data{self.data_name}/{args.strategy}'
+            save_dir = f'./data/sparse/data{self.data_name}/{args.strategy}'
             os.makedirs(save_dir, exist_ok=True)
-            current_metric = val_metrics['F1 Score']  # or any other metric you prioritize
+            current_metric = val_metrics['F1 Score'] 
+            
             if current_metric > best_metric + improvement_threshold:
                 best_metric = current_metric
-                torch.save(self.net.state_dict(), f"{save_dir}/best_model_{self.model_type}_{args.batch_size}_{args.use_pretrained}_410.pth")
+                torch.save(self.net.state_dict(), f"{save_dir}/best_model_{self.model_type}_{args.batch_size}_{args.use_pretrained}.pth")
                 stagnant_epochs = 0
                 dynamic_patience = min(dynamic_patience + patience_increase, max_patience)
             else:
@@ -536,17 +503,6 @@ class DL_models():
                 if stagnant_epochs >= dynamic_patience:
                     print("Early stopping triggered.")
                     break
-            """
-            if val_metrics['F1 Score'] > best_f1:
-                best_f1 = val_metrics['F1 Score']
-                torch.save(self.net.state_dict(), f"{save_dir}/best_model_{self.model_type}_{args.batch_size}.pth")
-                stagnant_epochs = 0
-            else:
-                stagnant_epochs += 1
-                if stagnant_epochs >= patience:
-                    print("Early stopping triggered.")
-                    break
-            """
             
     def train_model(self, seqs, labels):
         self.optimizer.zero_grad()
@@ -558,8 +514,8 @@ class DL_models():
 
     def test(self, test_loader):
         self.create_model(self.model_type) 
-        save_dir = f'/home/yzq/MIMIC-IV-Data-Pipeline/data/sparse/data{self.data_name}/{args.strategy}'
-        self.net.load_state_dict(torch.load(f"{save_dir}/best_model_{self.model_type}_{args.batch_size}_{args.use_pretrained}_410.pth"))
+        save_dir = f'./data/sparse/data{self.data_name}/{args.strategy}'
+        self.net.load_state_dict(torch.load(f"{save_dir}/best_model_{self.model_type}_{args.batch_size}_{args.use_pretrained}.pth"))
         test_metrics = self.evaluate_model(self.net, test_loader, self.loss, is_plot=True)
         print(f"Test {', '.join([f'{k}: {v:.4f}' for k, v in test_metrics.items()])}")
 
@@ -578,23 +534,20 @@ class DL_models():
                 loss = criterion(outputs, labels, logits, contrastive_loss, True, False, contrastive_weight=args.contrastive_weight)
                 total_loss += loss.item()
                 
-                predictions = (outputs > 0.1).float()#0.1
+                predictions = (outputs > 0.1).float()
                 all_predictions.extend(predictions.cpu().numpy())
                 all_labels.extend(labels.cpu().numpy())
                 all_probabilities.extend(outputs.cpu().numpy())
 
         if is_plot:
-            # Save the true labels and predicted probabilities
-            predicted_save_dir = f'/home/yzq/MIMIC-IV-Data-Pipeline/images/data{self.data_name}'
+            predicted_save_dir = f'./images/data{self.data_name}'
             os.makedirs(predicted_save_dir, exist_ok=True)
-            np.save(f'{predicted_save_dir}/{self.model_type}_{args.strategy}_{args.batch_size}_{args.use_pretrained}_0410_true_labels.npy', np.array(all_labels))
-            np.save(f'{predicted_save_dir}/{self.model_type}_{args.strategy}_{args.batch_size}_{args.use_pretrained}_0410_predicted_probabilities.npy', np.array(all_probabilities))
+            np.save(f'{predicted_save_dir}/{self.model_type}_{args.strategy}_{args.batch_size}_{args.use_pretrained}_true_labels.npy', np.array(all_labels))
+            np.save(f'{predicted_save_dir}/{self.model_type}_{args.strategy}_{args.batch_size}_{args.use_pretrained}_predicted_probabilities.npy', np.array(all_probabilities))
 
-            # 计算ROC曲线
             fpr, tpr, _ = roc_curve(all_labels, all_probabilities)
             roc_auc = auc(fpr, tpr)
 
-            # 绘制ROC曲线
             plt.figure()
             plt.plot(fpr, tpr, color='darkorange', lw=2, label='ROC curve (area = %0.2f)' % roc_auc)
             plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
@@ -604,15 +557,13 @@ class DL_models():
             plt.ylabel('True Positive Rate')
             plt.title('Receiver Operating Characteristic')
             plt.legend(loc="lower right")
-            dir = f'/home/yzq/MIMIC-IV-Data-Pipeline/images/data{args.data_name}/{args.strategy}'
+            dir = f'./images/data{args.data_name}/{args.strategy}'
             os.makedirs(dir, exist_ok=True)
-            plt.savefig(f'{dir}/roc_curve{self.data_name}{self.model_type}_{args.use_pretrained}.png')  # 保存ROC曲线图像
+            plt.savefig(f'{dir}/roc_curve{self.data_name}{self.model_type}_{args.use_pretrained}.png')  
             plt.show()
 
-            # 计算Precision-Recall曲线
             precision, recall, _ = precision_recall_curve(all_labels, all_probabilities)
 
-            # 绘制Precision-Recall曲线
             plt.figure()
             plt.plot(recall, precision, color='darkorange', lw=2, label='AP = %0.2f' % average_precision_score(all_labels, all_probabilities))
             plt.xlim([0.0, 1.0])
@@ -621,7 +572,7 @@ class DL_models():
             plt.ylabel('Precision')
             plt.title('Precision-Recall curve')
             plt.legend(loc="lower right")
-            plt.savefig(f'{dir}/precision_recall_curve_givens{self.data_name}{self.model_type}_{args.use_pretrained}.png')  # 保存Precision-Recall曲线图像
+            plt.savefig(f'{dir}/precision_recall_curve_givens{self.data_name}{self.model_type}_{args.use_pretrained}.png')  
             plt.show()
 
         metrics = {}
@@ -696,7 +647,6 @@ class DL_models():
             else:
                 raise ValueError("Invalid strategy specified")
             
-            # Padding if necessary to ensure all sequences have the same length
             padded_chart = pad(chart[i, :cutoff, :], (0, 0, 0, max_length - cutoff), value=fill_value)
             padded_anti = pad(anti[i, :cutoff, :], (0, 0, 0, max_length - cutoff), value=fill_value)
             padded_vent = pad(vent[i, :cutoff, :], (0, 0, 0, max_length - cutoff), value=fill_value)
@@ -704,10 +654,6 @@ class DL_models():
             new_chart.append(padded_chart)
             new_anti.append(padded_anti)
             new_vent.append(padded_vent)
-
-            #new_chart.append(chart[i, :cutoff, :])
-            #new_anti.append(anti[i, :cutoff, :])
-            #new_vent.append(vent[i, :cutoff, :])
 
         new_chart = torch.stack(new_chart)
         new_anti = torch.stack(new_anti)
@@ -724,50 +670,12 @@ class DL_models():
 
         if model_type=='cnn':
             self.net = model.CNNModel(self.device, num_channels=self.input_dim, num_filters=64, kernel_size=3, stride=1).to('cuda:0')
-            
+
         if model_type=='main_model':
-            self.net = model.MainModel(self.device, self.dynamic_dim, self.static_dim, common_dim=args.common_dim, hidden_dim=args.output_dim)
-
-        if model_type=='main_model2':
-            self.net = model.MainModel4(self.device, self.dynamic_dim, self.static_dim, common_dim=args.common_dim, hidden_dim=args.output_dim, use_pretrained=args.use_pretrained)
-
-        if model_type=='Time-series LSTM':
-            self.net = model.LSTMBase2(self.device,self.cond_vocab_size,self.chart_vocab_size,self.anti_vocab_size,self.vent_vocab_size,
-                                self.eth_vocab_size,self.gender_vocab_size,self.age_vocab_size,self.ins_vocab_size,
-                                self.modalities,
-                                embed_size=args.embed_size,rnn_size=args.rnn_size,
-                                batch_size=args.batch_size)
-        elif model_type=='rgsl':
-            self.net = model.rgslBase3(self.device,self.cond_vocab_size,self.chart_vocab_size,self.anti_vocab_size,self.vent_vocab_size,
-                                self.eth_vocab_size,self.gender_vocab_size,self.age_vocab_size,self.ins_vocab_size,
-                                self.modalities,
-                                embed_size=args.embed_size,rnn_size=args.rnn_size,batch_size=args.batch_size,time_size=args.window,
-                                in_channels=args.in_channels, K=args.K, nb_chev_filter=args.nb_chev_filter, nb_time_filter=args.nb_time_filter, 
-                                time_strides=args.time_strides,num_for_predict=args.num_for_predict,len_input=args.len_input, num_of_vertices=args.num_of_vertices,
-                                embed_dim=args.embed_dim)
-        elif model_type=='Time-series CNN':
-            self.net = model.CNNBase2(self.device,self.cond_vocab_size,self.chart_vocab_size,self.anti_vocab_size,self.vent_vocab_size,
-                                self.eth_vocab_size,self.gender_vocab_size,self.age_vocab_size,self.ins_vocab_size,
-                                self.modalities,
-                                embed_size=args.embed_size,rnn_size=args.rnn_size,
-                                batch_size=args.batch_size)
-        elif model_type=='Hybrid LSTM':
-            self.net = model.LSTMBaseH2(self.device,self.cond_vocab_size,self.chart_vocab_size,self.anti_vocab_size,self.vent_vocab_size,self.eth_vocab_size,
-                                self.gender_vocab_size,self.age_vocab_size,
-                                self.modalities,
-                                embed_size=args.embed_size,rnn_size=args.rnn_size,
-                                batch_size=args.batch_size) 
-        elif model_type=='Hybrid CNN':
-            self.net = model.CNNBaseH2(self.device,self.cond_vocab_size,self.chart_vocab_size,self.anti_vocab_size,self.vent_vocab_size,self.eth_vocab_size,
-                                self.gender_vocab_size,self.age_vocab_size,
-                                self.modalities,
-                                embed_size=args.embed_size,rnn_size=args.rnn_size,
-                                batch_size=args.batch_size) 
-        self.optimizer = optim.Adam(self.net.parameters(), lr=args.lrn_rate)#,weight_decay=0.0001
-        #self.optimizer = torch.optim.AdamW(self.net.parameters(), lr=args.lrn_rate)
+            self.net = model.MainModel(self.device, self.dynamic_dim, self.static_dim, common_dim=args.common_dim, hidden_dim=args.output_dim, use_pretrained=args.use_pretrained)
+        
+        self.optimizer = optim.Adam(self.net.parameters(), lr=args.lrn_rate)
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min', patience=10, factor=0.5)
-        #self.scheduler = StepLR(self.optimizer, step_size=10, gamma=0.1)
-        #self.optimizer = torch.optim.SGD(self.net.parameters(),lr=args.lrn_rate,weight_decay=0.01)
         self.net.to(self.device)
     
     def save_output(self):
@@ -990,8 +898,7 @@ class DL_models():
 
 class TensorDiscretizer:
     def __init__(self, tensor, feature_list, n_clusters=4, method="kmeans"):
-        self.device = tensor.device  # 获取tensor的设备信息
-        # 将 tensor 从 GPU 转移到 CPU，并转换为 numpy 数组
+        self.device = tensor.device  
         self.tensor = tensor.cpu().numpy() if torch.cuda.is_available() else tensor.numpy()
         self.feature_list = feature_list
         self.n_clusters = n_clusters
@@ -1000,34 +907,20 @@ class TensorDiscretizer:
         self.updated_list = None
         
     def discretize_tensor_by_timesteps(self):
-        """
-        Discretize the tensor values using K-means clustering or binning based on the third dimension (timesteps).
-        """
+        
         tensor_shape = self.tensor.shape
         discretized_tensor = np.zeros_like(self.tensor)
 
         if self.method == "kmeans":
             for i in range(tensor_shape[2]):
-                # Reshape the data for clustering
                 data = self.tensor[:, :, i].reshape(-1, 1)
-                
-                # Apply K-means clustering
                 kmeans = KMeans(n_clusters=self.n_clusters, random_state=42).fit(data)
-                
-                # Assign each data point to its corresponding cluster label
                 labels = kmeans.predict(data)
-                
-                # Reshape the labels back to original shape
                 discretized_tensor[:, :, i] = labels.reshape(tensor_shape[0], tensor_shape[1])
-        if self.method == "binning":  # binning
+        if self.method == "binning":  
             for i in range(tensor_shape[2]):
-                # Get the bin edges for the current feature across all samples and timesteps
                 bin_edges = np.linspace(self.tensor[:, :, i].min(), self.tensor[:, :, i].max(), self.n_clusters + 1)
-
-                # Digitize the tensor values based on bin edges
                 binned_feature = np.digitize(self.tensor[:, :, i], bin_edges) - 1
-
-                # Reshape the labels back to original shape
                 discretized_tensor[:, :, i] = binned_feature
 
         self.discretized_tensor = discretized_tensor
@@ -1043,7 +936,6 @@ class TensorDiscretizer:
     def transform(self):
         self.discretize_tensor_by_timesteps()
         self.update_feature_list()
-        # 创建一个新的Tensor来存储结果，形状为[200, 84, num_updated_features]
         num_updated_features = len(self.updated_list)
         updated_tensor = np.zeros((self.tensor.shape[0], self.tensor.shape[1], num_updated_features))
 
@@ -1054,7 +946,6 @@ class TensorDiscretizer:
                 cluster_indices = np.where(self.discretized_tensor[:, :, i] == j)
                 updated_tensor[cluster_indices[0], cluster_indices[1], feature_indices] = 1
 
-        # 将离散化后的 tensor 转回 PyTorch tensor 并移回原始设备
         self.discretized_tensor = torch.tensor(updated_tensor).to(self.device)
         
         return self.discretized_tensor, self.updated_list

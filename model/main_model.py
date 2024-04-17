@@ -1,38 +1,15 @@
 import os
-#import jsondim
 import torch
 from torch import nn
 import torch.nn.functional as F
-import torch.nn.init as init
 from torch.autograd import *
-from torch.utils.data import Subset, DataLoader
-from sklearn import metrics
-from sklearn.cluster import KMeans
 import importlib
 import numpy as np
-from collections import defaultdict
-import sys
 import parameters
 from parameters import *
-import argparse
-import captum
-from captum.attr import IntegratedGradients, Occlusion, LayerGradCam, LayerAttribution
-from argparse import ArgumentParser
-import networkx as nx
-from node2vec import Node2Vec
-from itertools import chain
 importlib.reload(parameters)
-import parameters
-from parameters import *
 
-from scipy.sparse.linalg import eigs
-from model.RGSLCell import RGSLCell
-from model.RGCN_copy import Temporal_Attention_layer, Spatial_Attention_layer, cheb_conv_withSAt
-import math
-import dl_train_copy4 as dl_train
-from filterpy.monte_carlo import systematic_resample
-from sklearn.model_selection import StratifiedShuffleSplit, StratifiedKFold
-import pickle
+import iahed_train as dl_train
 from encoder import *
 from losses import *
 Tensor = torch.Tensor
@@ -42,9 +19,7 @@ class LSTMModel(nn.Module):
         super(LSTMModel, self).__init__()
         self.device = device
         self.lstm = nn.LSTM(input_dim, hidden_dim, num_layers=num_layers, batch_first=True, dropout=dropout)
-        #self.fc = nn.Linear(hidden_dim, output_dim)
-        self.fc1 = nn.Linear(hidden_dim, 1)  # Intermediate dense layer
-        #self.fc2 = nn.Linear(32, 1) 
+        self.fc1 = nn.Linear(hidden_dim, 1)  
         self.dropout = nn.Dropout(0.1)
         self.relu = nn.ReLU()
         self.sigmoid = nn.Sigmoid()
@@ -55,8 +30,6 @@ class LSTMModel(nn.Module):
         lstm_out = self.dropout(lstm_out)
         lstm_out = lstm_out[:, -1, :]
         out = self.relu(self.fc1(lstm_out))
-        #out = self.fc2(x)
-        #out = self.fc(lstm_out)
         output = self.sigmoid(out)
         contrastive_loss = 0
         return output, contrastive_loss, out
@@ -66,10 +39,9 @@ class GRUModel(nn.Module):
         super(GRUModel, self).__init__()
         self.device = device
         self.gru = nn.GRU(input_dim, hidden_dim, num_layers=num_layers, batch_first=True, dropout=dropout)
-        self.fc1 = nn.Linear(hidden_dim, 64)  # Intermediate dense layer
+        self.fc1 = nn.Linear(hidden_dim, 64)  
         self.fc2 = nn.Linear(64, 1) 
         self.relu = nn.ReLU()
-        #self.fc = nn.Linear(hidden_dim, output_dim)
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, x, labels):
@@ -78,7 +50,6 @@ class GRUModel(nn.Module):
         gru_out = gru_out[:, -1, :]
         x = self.relu(self.fc1(gru_out))
         out = self.fc2(x)
-        #out = self.fc(gru_out)
         output = self.sigmoid(out)
         contrastive_loss = 0
         return output, contrastive_loss, out
@@ -109,27 +80,27 @@ class CNNModel(nn.Module):
         contrastive_loss = 0
         return output, contrastive_loss, out
 
-class MainModel4(nn.Module): 
+class MainModel(nn.Module): 
     def __init__(self, device, dynamic_dim, static_dim, common_dim, hidden_dim, use_pretrained):
-        super(MainModel4, self).__init__()
+        super(MainModel, self).__init__()
         self.device=device
         self.use_pretrained = use_pretrained
         self.sigmoid = nn.Sigmoid()
         self.common_dim = common_dim
         self.hidden_dim = hidden_dim
+        self.dynamic_dim = dynamic_dim
+        self.temporal_unit = 0
         self.featureattention = FeatureAttention(static_dim, dynamic_dim, hidden_dim)                                                                          
         self.fc1 = nn.Linear(hidden_dim*2, hidden_dim)
         self.fc2 = nn.Linear(hidden_dim, 1)
         self.dropout = nn.Dropout(0.5)
         self.batchnorm = nn.BatchNorm1d(hidden_dim)
-        self.ts_encoder =dl_train.TSEncoderAutoencoder(input_dims=dynamic_dim, output_dims=hidden_dim).to(self.device)
-        self.temporal_unit = 0
-        self.dynamic_dim = dynamic_dim
-        self.encoder_maj = dl_train.TSEncoderAutoencoder(input_dims=self.dynamic_dim, output_dims=self.hidden_dim).to(self.device)
-        self.encoder_min = dl_train.TSEncoderAutoencoder(input_dims=self.dynamic_dim, output_dims=self.hidden_dim).to(self.device)
+        self.ts_encoder =dl_train.IAHEDAutoencoder(input_dims=dynamic_dim, output_dims=hidden_dim).to(self.device)
+        self.encoder_maj = dl_train.IAHEDAutoencoder(input_dims=self.dynamic_dim, output_dims=self.hidden_dim).to(self.device)
+        self.encoder_min = dl_train.IAHEDAutoencoder(input_dims=self.dynamic_dim, output_dims=self.hidden_dim).to(self.device)
         if self.use_pretrained:
-            majority_weight_filename = "./data/sparse/data{}/{}/majority_best_weights1_{}_{}_{}_{}.pth".format(args.data_name,args.strategy,args.batch_size, args.common_dim, args.num_epochs_ae, args.output_dim)
-            minority_weight_filename = "./data/sparse/data{}/{}/minority_best_weights1_{}_{}_{}_{}.pth".format(args.data_name,args.strategy,args.batch_size, args.common_dim, args.num_epochs_ae, args.output_dim)
+            majority_weight_filename = "./data/sparse/data{}/{}/majority_best_weights_{}_{}_{}_{}.pth".format(args.data_name,args.strategy,args.batch_size, args.common_dim, args.num_epochs_ae, args.output_dim)
+            minority_weight_filename = "./data/sparse/data{}/{}/minority_best_weights_{}_{}_{}_{}.pth".format(args.data_name,args.strategy,args.batch_size, args.common_dim, args.num_epochs_ae, args.output_dim)
             if os.path.exists(majority_weight_filename):
                 self.encoder_maj.load_state_dict(torch.load(majority_weight_filename))
             if os.path.exists(minority_weight_filename):
@@ -156,9 +127,9 @@ class MainModel4(nn.Module):
         crop_offset = np.random.randint(low=-crop_eleft, high=ts_l - crop_eright + 1, size=x1.size(0))
         x1_cropped = self.take_per_row(x1, crop_offset + crop_eleft, crop_right - crop_eleft)
         x2_cropped = self.take_per_row(x2, crop_offset + crop_left, crop_eright - crop_left)
-        #x1_rotated = self.apply_givens_rotation(x1_cropped, F)
-        #x2_rotated = self.apply_givens_rotation(x2_cropped, F)
-        return x1_cropped, x2_cropped, crop_l #x1_rotated, x2_rotated, crop_l
+        x1_rotated = self.apply_givens_rotation(x1_cropped, F)
+        x2_rotated = self.apply_givens_rotation(x2_cropped, F)
+        return x1_rotated, x2_rotated, crop_l
     
     def givens_rotation_matrix(self, i, j, theta, F):
         G = torch.eye(F, device=self.device)
@@ -184,7 +155,6 @@ class MainModel4(nn.Module):
 
         F = self.dynamic_dim
         cropped_dynamic_x1, cropped_dynamic_x2, crop_l = self.temporal_crop_and_rotate(majority_features, minority_features, F)
-        #cropped_dynamic_x1, cropped_dynamic_x2, crop_l = self.temporal_crop(majority_features,minority_features)
         dynamic_repr1 = self.ts_encoder(cropped_dynamic_x1)[1]
         dynamic_repr1 = dynamic_repr1[:,-crop_l:]
         dynamic_repr2 = self.ts_encoder(cropped_dynamic_x2)[1]
@@ -200,7 +170,7 @@ class MainModel4(nn.Module):
         out1 = self.fc1(combined_data)
         logits = self.fc2(out1)
         predictions = self.sigmoid(logits)
-        total_loss = 0.5*contrastive_loss + hierarchical_loss #0.5
+        total_loss = 0.5*contrastive_loss + hierarchical_loss 
 
         return predictions, total_loss, logits
 
