@@ -1,5 +1,4 @@
 import os
-#import jsondim
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -19,9 +18,9 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)) + './../..')
 if not os.path.exists(f"./data/output{args.data_name}"):
     os.makedirs(f"./data/output{args.data_name}")
 
-class FocalLoss(nn.Module):
+class Class_Balanced_FocalLoss(nn.Module):
     def __init__(self, alpha=1, gamma=3, logits=False, reduction='mean', device='cuda:0'):
-        super(FocalLoss, self).__init__()
+        super(Class_Balanced_FocalLoss, self).__init__()
         self.alpha = torch.tensor([alpha], device=device)
         self.gamma = gamma
         self.logits = logits
@@ -77,10 +76,7 @@ class Loss(nn.Module):
             prob=torch.tensor(prob)
             labels=torch.tensor(labels)
             logits=torch.tensor(logits)
-        #print(prob)
-        #prob=prob.type(torch.cuda.FloatTensor)
-        #labels=labels.type(torch.cuda.FloatTensor)
-        #logits=logits.type(torch.cuda.FloatTensor)
+    
         prob=prob.float()
         labels=labels.float()
         logits=logits.float() 
@@ -90,34 +86,18 @@ class Loss(nn.Module):
         neg_label = labels[neg_ind]
         pos_prob = prob[pos_ind]
         neg_prob = prob[neg_ind]
-        #pos_prob=pos_prob.squeeze()
-        #neg_prob=neg_prob.squeeze()
         pos_loss, neg_loss = 0, 0
-        """
-        #################           BCE            #######################
-        if len(pos_prob):
-            pos_prob=pos_prob.to(self.device)
-            pos_label=pos_label.to(self.device)
-            pos_loss = self.classify_loss(pos_prob, pos_label) 
-       
-        if len(neg_prob):
-            neg_prob=neg_prob.to(self.device)
-            neg_label=neg_label.to(self.device)
-            neg_loss = self.classify_loss(neg_prob, neg_label)
-        """
         
         classify_loss = pos_loss + neg_loss
         logits=logits.to(self.device)
         labels=labels.to(self.device)
-        #classify_loss2 = self.classify_loss2(logits, labels)
         
-        focal_criterion = FocalLoss(alpha=args.alpha, gamma=args.gamma, logits=True, reduction='mean', device=self.device)
+        focal_criterion = Class_Balanced_FocalLoss(alpha=args.alpha, gamma=args.gamma, logits=True, reduction='mean', device=self.device)
         focal_loss = focal_criterion(prob, labels)
-        total_loss = contrastive_weight * contrastive_loss + args.focal_weight * focal_loss
-        #total_loss = contrastive_weight * contrastive_loss + classify_loss
+        total_loss = args.contrastive_weight * contrastive_loss + args.focal_weight * focal_loss
         
         if train:
-            return total_loss #classify_loss
+            return total_loss
         #################           AUROC            #######################
         
         labels = labels.data.cpu().numpy()
@@ -135,19 +115,15 @@ class Loss(nn.Module):
             precision, recall, thresholds = metrics.precision_recall_curve(labels, prob)
             apr = metrics.auc(recall, precision)
         
-        
-        # stati number
         prob1 = prob >= 0.5
-        #print(prob)
-        
+
         pos_l = (labels==1).sum()
         neg_l = (labels==0).sum()
-        pos_p = (prob1 + labels == 2).sum()#how many positives are predicted positive#####TP
-        neg_p = (prob1 + labels == 0).sum()#True negatives
+        pos_p = (prob1 + labels == 2).sum()
+        neg_p = (prob1 + labels == 0).sum()
         prob2 = prob < 0.5
         fn    = (prob2 + labels==2).sum()
         fp    = (prob2 + labels==0).sum()
-        #print(classify_loss, pos_p, pos_l, neg_p, neg_l)
         
         #################           Accuracy            #######################
         if(self.acc):
@@ -190,8 +166,6 @@ class Loss(nn.Module):
         print("ECE: {:.2f}".format(ECE))
         print("MCE: {:.2f}".format(MCE))
         
-        #return [classify_loss, auc,apr,base,accur,prec,recall,spec,npv_val,ECE,MCE]
-    
 
     def auroc_plot(self,label, pred):
         plt.figure(figsize=(8,6))
@@ -208,7 +182,6 @@ class Loss(nn.Module):
         plt.title("AUC-ROC")
         plt.legend()
         plt.savefig(f'./data/output{args.data_name}/'+"auroc_plot.png")
-        #plt.show()
         
     def calb_curve(self,bins,bin_accs,ECE, MCE):
         import matplotlib.patches as mpatches

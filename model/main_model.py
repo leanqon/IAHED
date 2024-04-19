@@ -8,13 +8,15 @@ import numpy as np
 import parameters
 from parameters import *
 importlib.reload(parameters)
-
-import iahed_train as dl_train
+import train as dl_train
 from encoder import *
 from losses import *
 Tensor = torch.Tensor
 
 class LSTMModel(nn.Module):
+    """
+    LSTM model for sequence classification.
+    """
     def __init__(self, device, input_dim, hidden_dim, output_dim=1, num_layers=2, dropout=0.1):
         super(LSTMModel, self).__init__()
         self.device = device
@@ -25,6 +27,18 @@ class LSTMModel(nn.Module):
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, x, labels):
+        """
+        Forward pass of the LSTM model.
+
+        Args:
+            x (list): List of input sequences.
+            labels (Tensor): Labels for the input sequences.
+
+        Returns:
+            output (Tensor): Output predictions.
+            contrastive_loss (float): Contrastive loss.
+            out (Tensor): Intermediate output.
+        """
         x = torch.cat(x, dim=2).to(self.device)
         lstm_out, _ = self.lstm(x)
         lstm_out = self.dropout(lstm_out)
@@ -35,6 +49,9 @@ class LSTMModel(nn.Module):
         return output, contrastive_loss, out
     
 class GRUModel(nn.Module):
+    """
+    GRU model for sequence classification.
+    """
     def __init__(self, device, input_dim, hidden_dim, output_dim=1, num_layers=2, dropout=0.5):
         super(GRUModel, self).__init__()
         self.device = device
@@ -45,6 +62,18 @@ class GRUModel(nn.Module):
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, x, labels):
+        """
+        Forward pass of the GRU model.
+
+        Args:
+            x (list): List of input sequences.
+            labels (Tensor): Labels for the input sequences.
+
+        Returns:
+            output (Tensor): Output predictions.
+            contrastive_loss (float): Contrastive loss.
+            out (Tensor): Intermediate output.
+        """
         x = torch.cat(x, dim=2).to(self.device)
         gru_out, _ = self.gru(x)
         gru_out = gru_out[:, -1, :]
@@ -55,6 +84,9 @@ class GRUModel(nn.Module):
         return output, contrastive_loss, out
 
 class CNNModel(nn.Module):
+    """
+    CNN model for sequence classification.
+    """
     def __init__(self, device, num_channels, num_filters=64, kernel_size=3, stride=1):
         super(CNNModel, self).__init__()
         self.device = device
@@ -66,6 +98,18 @@ class CNNModel(nn.Module):
         self.flattened_size = None
     
     def forward(self, seqs,labels):
+        """
+        Forward pass of the CNN model.
+
+        Args:
+            seqs (list): List of input sequences.
+            labels (Tensor): Labels for the input sequences.
+
+        Returns:
+            output (Tensor): Output predictions.
+            contrastive_loss (float): Contrastive loss.
+            out (Tensor): Intermediate output.
+        """
         x = torch.cat(seqs, dim=2).to(self.device)
         x = x.permute(0, 2, 1)
         x = self.pool(F.relu(self.conv1(x)))
@@ -81,6 +125,9 @@ class CNNModel(nn.Module):
         return output, contrastive_loss, out
 
 class MainModel(nn.Module): 
+    """
+    Main model for sequence classification.
+    """
     def __init__(self, device, dynamic_dim, static_dim, common_dim, hidden_dim, use_pretrained):
         super(MainModel, self).__init__()
         self.device=device
@@ -95,7 +142,7 @@ class MainModel(nn.Module):
         self.fc2 = nn.Linear(hidden_dim, 1)
         self.dropout = nn.Dropout(0.5)
         self.batchnorm = nn.BatchNorm1d(hidden_dim)
-        self.ts_encoder =dl_train.IAHEDAutoencoder(input_dims=dynamic_dim, output_dims=hidden_dim).to(self.device)
+        self.encoder =dl_train.IAHEDAutoencoder(input_dims=dynamic_dim, output_dims=hidden_dim).to(self.device)
         self.encoder_maj = dl_train.IAHEDAutoencoder(input_dims=self.dynamic_dim, output_dims=self.hidden_dim).to(self.device)
         self.encoder_min = dl_train.IAHEDAutoencoder(input_dims=self.dynamic_dim, output_dims=self.hidden_dim).to(self.device)
         if self.use_pretrained:
@@ -105,19 +152,53 @@ class MainModel(nn.Module):
                 self.encoder_maj.load_state_dict(torch.load(majority_weight_filename))
             if os.path.exists(minority_weight_filename):
                 self.encoder_min.load_state_dict(torch.load(minority_weight_filename))
-            self.contrastive_loss_func = ContrastiveLoss(margin=1.0, pos_weight=0.8, neg_weight=0.2)
+            self.cecl_func = class_equilibrium_contrastive_loss(margin=1.0, pos_weight=0.8, neg_weight=0.2)
 
     def autoencoder(self, seqs):
+        """
+        Apply autoencoder to the input sequences.
+
+        Args:
+            seqs (list): List of input sequences.
+
+        Returns:
+            majority_features (Tensor): Encoded features for majority class.
+            minority_features (Tensor): Encoded features for minority class.
+        """
         dynamic_x = torch.cat(seqs[0:3], dim=2).to(self.device)
         majority_features = self.encoder_maj(dynamic_x.clone())[1]
         minority_features = self.encoder_min(dynamic_x.clone())[1]  
         return majority_features, minority_features
 
     def take_per_row(self, A, indx, num_elem):
+        """
+        Take elements from each row of a tensor based on given indices.
+
+        Args:
+            A (Tensor): Input tensor.
+            indx (Tensor): Indices for each row.
+            num_elem (int): Number of elements to take.
+
+        Returns:
+            selected (Tensor): Selected elements from each row.
+        """
         all_indx = indx[:,None] + np.arange(num_elem)
         return A[torch.arange(all_indx.shape[0])[:,None], all_indx]
 
     def temporal_crop_and_rotate(self, x1, x2, F):
+        """
+        Perform temporal cropping and rotation on input sequences.
+
+        Args:
+            x1 (Tensor): First input sequence.
+            x2 (Tensor): Second input sequence.
+            F (int): Dimension of the input sequences.
+
+        Returns:
+            x1_rotated (Tensor): Rotated and cropped first input sequence.
+            x2_rotated (Tensor): Rotated and cropped second input sequence.
+            crop_l (int): Length of the cropped sequence.
+        """
         ts_l = x1.size(1)
         crop_l = np.random.randint(low=2 ** (self.temporal_unit + 1), high=ts_l+1)
         crop_left = np.random.randint(ts_l - crop_l + 1)
@@ -132,6 +213,18 @@ class MainModel(nn.Module):
         return x1_rotated, x2_rotated, crop_l
     
     def givens_rotation_matrix(self, i, j, theta, F):
+        """
+        Generate a Givens rotation matrix.
+
+        Args:
+            i (int): First index.
+            j (int): Second index.
+            theta (Tensor): Rotation angle.
+            F (int): Dimension of the matrix.
+
+        Returns:
+            G (Tensor): Givens rotation matrix.
+        """
         G = torch.eye(F, device=self.device)
         G[i, i] = G[j, j] = torch.cos(theta)
         G[i, j] = -torch.sin(theta)
@@ -139,15 +232,37 @@ class MainModel(nn.Module):
         return G
 
     def apply_givens_rotation(self, x, F):
+        """
+        Apply Givens rotation to input sequence.
+
+        Args:
+            x (Tensor): Input sequence.
+            F (int): Dimension of the sequence.
+
+        Returns:
+            rotated (Tensor): Rotated sequence.
+        """
         i, j = np.random.choice(F, 2, replace=False)
         theta = np.random.uniform(-np.pi, np.pi)
         G = self.givens_rotation_matrix(i, j, torch.tensor(theta, device=self.device), F)
         return torch.matmul(x, G)
 
     def forward(self, seqs, labels): 
+        """
+        Forward pass of the main model.
+
+        Args:
+            seqs (list): List of input sequences.
+            labels (Tensor): Labels for the input sequences.
+
+        Returns:
+            predictions (Tensor): Output predictions.
+            total_loss (float): Total loss.
+            logits (Tensor): Intermediate logits.
+        """
         if self.use_pretrained:
             majority_features, minority_features = self.autoencoder(seqs)
-            contrastive_loss = self.contrastive_loss_func(majority_features, minority_features, labels)
+            contrastive_loss = self.cecl_func(majority_features, minority_features, labels)
         else:
             majority_features = torch.cat(seqs[0:3], dim=2).to(self.device)
             minority_features = majority_features.clone()  
@@ -155,12 +270,12 @@ class MainModel(nn.Module):
 
         F = self.dynamic_dim
         cropped_dynamic_x1, cropped_dynamic_x2, crop_l = self.temporal_crop_and_rotate(majority_features, minority_features, F)
-        dynamic_repr1 = self.ts_encoder(cropped_dynamic_x1)[1]
+        dynamic_repr1 = self.encoder(cropped_dynamic_x1)[1]
         dynamic_repr1 = dynamic_repr1[:,-crop_l:]
-        dynamic_repr2 = self.ts_encoder(cropped_dynamic_x2)[1]
+        dynamic_repr2 = self.encoder(cropped_dynamic_x2)[1]
         dynamic_repr2 = dynamic_repr2[:,:crop_l]
         combined_dynamic_repr = torch.cat((dynamic_repr1, dynamic_repr2), dim=-1)
-        hierarchical_loss = hierarchical_contrastive_loss(dynamic_repr1, dynamic_repr2, temporal_unit=self.temporal_unit)
+        hierarchical_loss = multi_scale_contrastive_loss(dynamic_repr1, dynamic_repr2, temporal_unit=self.temporal_unit)
         out = combined_dynamic_repr[:,-1,:].squeeze(1)
         static_x = torch.cat(seqs[3:7],dim=2).to(self.device)
         static_x = static_x[:,-1,:].squeeze(1)
@@ -175,6 +290,9 @@ class MainModel(nn.Module):
         return predictions, total_loss, logits
 
 class FeatureAttention(nn.Module):
+    """
+    Attention mechanism for combining time-variant and time-invariant features.
+    """
     def __init__(self, time_invariant_dim, time_variant_dim, feature_dim):
         super(FeatureAttention, self).__init__()
         self.time_invariant_embedding = nn.Linear(time_invariant_dim, feature_dim*2)
@@ -183,6 +301,16 @@ class FeatureAttention(nn.Module):
         self.batchnorm = nn.BatchNorm1d(feature_dim*2)
 
     def forward(self, time_variant, time_invariant):
+        """
+        Forward pass of the attention mechanism.
+
+        Args:
+            time_variant (Tensor): Time-variant features.
+            time_invariant (Tensor): Time-invariant features.
+
+        Returns:
+            combined_features (Tensor): Combined features.
+        """
         time_invariant_embedded = self.time_invariant_embedding(time_invariant)
         time_invariant_embedded = self.batchnorm(time_invariant_embedded)
         time_variant = self.fc1(time_variant)
@@ -194,9 +322,41 @@ class FeatureAttention(nn.Module):
      
         return combined_features        
 
-class ContrastiveLoss(nn.Module):
+class class_equilibrium_contrastive_loss(nn.Module):
+    """
+    Contrastive loss function for class equilibrium.
+    """
+    def __init__(self, margin, pos_weight, neg_weight):
+        super(class_equilibrium_contrastive_loss, self).__init__()
+        self.margin = margin
+        self.pos_weight = pos_weight
+        self.neg_weight = neg_weight
+
+    def forward(self, majority_features, minority_features, labels):
+        """
+        Forward pass of the contrastive loss function.
+
+        Args:
+            majority_features (Tensor): Encoded features for majority class.
+            minority_features (Tensor): Encoded features for minority class.
+            labels (Tensor): Labels for the input sequences.
+
+        Returns:
+            loss (float): Contrastive loss.
+        """
+        # Compute pairwise distances
+        distances = torch.cdist(majority_features, minority_features, p=2)
+        
+        # Compute positive and negative losses
+        pos_loss = torch.mean(torch.clamp(distances - self.margin, min=0) * labels)
+        neg_loss = torch.mean(torch.clamp(self.margin - distances, min=0) * (1 - labels))
+        
+        # Compute weighted loss
+        loss = self.pos_weight * pos_loss + self.neg_weight * neg_loss
+        
+        return loss
     def __init__(self, margin=1.0, pos_weight=0.8, neg_weight=0.2):
-        super(ContrastiveLoss, self).__init__()
+        super(class_equilibrium_contrastive_loss, self).__init__()
         self.margin = margin
         self.pos_weight = pos_weight
         self.neg_weight = neg_weight

@@ -333,4 +333,4 @@ dfs.append(create_summary_table(cond_counts, cond_percentages))
 df = pd.concat(dfs)
 df = df.round().astype(int)  # Round all columns and convert to integer type
 print(df)
-df.to_csv(f"./data/sparse/data{data_name}/df{data_name}_2.csv", index=True)
+df.to_csv(f"./data/sparse/data{data_name}/df{data_name}.csv", index=True)

@@ -8,7 +8,6 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import pandas as pd
 import numpy as np
 import torch as T
-import torch
 torch.autograd.set_detect_anomaly(True)
 from torch.utils.data import Dataset
 from sklearn.model_selection import StratifiedShuffleSplit, StratifiedKFold
@@ -260,7 +259,7 @@ class TorchFileDataset(Dataset):
 class IAHEDAutoencoder(nn.Module):
     def __init__(self, input_dims, output_dims, hidden_dims=64, depth=10):
         super().__init__()
-        self.encoder = TSEncoder(input_dims, output_dims, hidden_dims, depth)
+        self.encoder = Encoder(input_dims, output_dims, hidden_dims, depth)
         decoder_dims = 6 * output_dims
         self.decoder = nn.Sequential(
             nn.ConvTranspose1d(decoder_dims, decoder_dims//2, kernel_size=3, stride=1, padding=1),
@@ -281,7 +280,7 @@ class AutoencoderTrainer:
         self.ae_criterion = nn.MSELoss()
         self.dataset = dataset
 
-    def train(self, label_num, train_val_dataset, train_val_idx): #size_num,
+    def train(self, label_num, train_val_dataset, train_val_idx): 
         labels = np.load('./data/sparse/data{}/{}/labels_{}.npy'.format(args.data_name,args.strategy,args.stride))
         indices = np.where(labels == label_num)[0]
         train_val_idx = set(train_val_idx)
@@ -324,8 +323,8 @@ class AutoencoderTrainer:
             torch.save(best_weights, "./data/sparse/data{}/{}/minority_best_weights_{}_{}_{}_{}.pth".format(args.data_name, args.strategy, args.batch_size, args.common_dim, args.num_epochs_ae, args.output_dim))
 
 class DL_models():
-    def __init__(self,data_icu,diag_flag,proc_flag,out_flag,chart_flag,med_flag,lab_flag,anti_flag,vent_flag,model_type,k_fold,data_name,sampling_first,undersampling,model_name,train,save_data=False,pre_train=False,train_test=False,test=False):
-        self.save_path="saved_models/"+model_name+".tar"
+    def __init__(self,data_icu,diag_flag,proc_flag,out_flag,chart_flag,med_flag,lab_flag,anti_flag,vent_flag,model_type,k_fold,data_name,sampling_first,undersampling,save_data=False,pre_train=False,train_test=False,test=False):
+        
         self.data_icu=data_icu
         self.diag_flag,self.proc_flag,self.out_flag,self.chart_flag,self.med_flag,self.anti_flag,self.vent_flag,self.lab_flag=diag_flag,proc_flag,out_flag,chart_flag,med_flag,lab_flag,anti_flag,vent_flag
         self.modalities=self.diag_flag+self.proc_flag+self.out_flag+self.chart_flag+self.med_flag+self.lab_flag+self.anti_flag+self.vent_flag
@@ -349,7 +348,7 @@ class DL_models():
             start = time.time()
             labels=pd.read_csv(f'./data/csv{self.data_name}/labels.csv', header=0)
             hids=labels.iloc[:,0] 
-            meds,chart,out,proc,lab,anti,vent,stat,demo,Y=self.getXY_all2(hids,device=self.device)
+            meds,chart,out,proc,lab,anti,vent,stat,demo,Y=self.getXY_all(hids,device=self.device)
             end = time.time()
             print(f"the running time is: {end - start} s")
             hids_all=hids.to_numpy()
@@ -406,7 +405,7 @@ class DL_models():
         train_loader, val_loader, test_loader, train_val_loader, train_val_subset, train_val_idx = self.dataset_loader(dataset)
          
         if pre_train:
-            pre_model = TSEncoderAutoencoder(self.dynamic_dim, args.output_dim).to(self.device)
+            pre_model = IAHEDAutoencoder(self.dynamic_dim, args.output_dim).to(self.device)
             trainer = AutoencoderTrainer(pre_model, dataset, device = self.device)
             trainer.train(1, train_val_subset, train_val_idx) 
             trainer.train(0, train_val_subset, train_val_idx) 
@@ -454,7 +453,7 @@ class DL_models():
 
     def train(self, train_loader, val_loader):
         self.create_model(self.model_type)
-        best_f1 = -0.1
+        best_f1 = 0.0
         patience = 20
         stagnant_epochs = 0
         
@@ -474,7 +473,7 @@ class DL_models():
                 labels = data[-1].to(self.device).squeeze(-1)
                 loss, outputs = self.train_model(seqs,labels)
                 total_loss += loss.item()
-                predictions = (outputs > 0.1).float()#0.1
+                predictions = (outputs > 0.1).float()
                 all_predictions.extend(predictions.cpu().numpy())
                 all_labels.extend(labels.cpu().numpy())
                 all_probabilities.extend(outputs.detach().cpu().numpy())
@@ -700,7 +699,7 @@ class DL_models():
         with open(f'./data/output{self.data_name}/'+'outputDict', 'wb') as fp:
                pickle.dump(output_df, fp)  
 
-    def getXY_all2(self,ids,device):
+    def getXY_all(self,ids,device):
         dyn_df=[]
         stat_df=[]
         demo_df=[]
