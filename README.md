@@ -1,3 +1,3 @@
 # IAHED
 
-This is the codebase for the paper: IAHED: An Imbalance-Adaptive Hybrid Encoder-Decoder Framework for Early Detection of ICU-Acquired Multidrug-Resistant Bacteria.
+This is the codebase for the paper: Early prediction of intensive care unit-acquired multidrug-resistant bacteria using deep learning model.
